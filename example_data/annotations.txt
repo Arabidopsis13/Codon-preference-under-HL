@@ -1,0 +1,5 @@
+petN	CDS	50	100	petN
+rbcL	CDS	100	1000	rbcL
+accD	CDS	50	1000	accD
+psaJ	CDS	100	100	psaJ
+

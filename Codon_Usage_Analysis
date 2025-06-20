@@ -85,7 +85,62 @@ codon_map <- c(
 # 6. Count codons and compare between conditions
 
 ```{r}
-[...previous content...]
+samples <- unique(rna_seq_counts_long$sample)
+control_samples <- samples[grepl("W0_", samples)]
+stress_samples <- samples[grepl("H24_", samples)]
+
+results_list <- list()
+
+for (i in seq_along(control_samples)) {
+  control_sample <- control_samples[i]
+  stress_sample <- stress_samples[i]
+  
+  control_data <- normalized_counts %>% filter(sample == control_sample)
+  stress_data <- normalized_counts %>% filter(sample == stress_sample)
+  
+  control_codon_counts <- count_codons(control_data$sequence, control_data$reads_per_million)
+  stress_codon_counts <- count_codons(stress_data$sequence, stress_data$reads_per_million)
+  
+  codon_comparison <- data.frame(
+    codon = names(control_codon_counts),
+    control = control_codon_counts,
+    stress = stress_codon_counts,
+    FC = (stress_codon_counts / control_codon_counts)
+  ) %>%
+  mutate(log2_FC = log2(FC))
+
+  codon_comparison$amino_acid <- codon_map[codon_comparison$codon]
+  
+  results_list[[paste0("comparison_", i)]] <- codon_comparison
+}
+
+combined_data <- bind_rows(
+  results_list$comparison_1 %>% mutate(replicate = "rep1"),
+  results_list$comparison_2 %>% mutate(replicate = "rep2"),
+  results_list$comparison_3 %>% mutate(replicate = "rep3")
+)
+```
+
+# 7. Visualization of results by biological replicate
+
+```{r}
+Codon_change_by_aminoacid_sep_rep <- ggplot(combined_data, aes(x = codon, y = log2_FC, fill = replicate)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_wrap(~ amino_acid, scales = "free_x") +
+  theme_bw() +
+  labs(title = "Codon change sorted by amino acid",
+       x = "Codon", y = "log2_FC") +
+  scale_fill_brewer(palette = "Set1")
+print(Codon_change_by_aminoacid_sep_rep)
+```
+
+# 8. Saving results to file
+
+```{r}
+for (i in seq_along(results_list)) {
+  write.csv(results_list[[i]], paste0("../produced_data/codon_comparison", i, ".csv"), row.names = FALSE)
+}
+ggsave("../produced_data/Codon_change_by_amino_acid.png", plot = Codon_change_by_aminoacid_sep_rep, width = 14, height = 8, dpi = 300)
 ```
 
 # 9. Create summary table for all samples and calculate statistics

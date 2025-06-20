@@ -1,0 +1,167 @@
+---
+title: "Codon_Usage_Analysis"
+format: html
+editor: visual
+---
+
+# 1. Load required libraries
+
+```{r}
+library(Biostrings)
+library(dplyr)
+library(readr)
+library(tidyr)
+library(ggplot2)
+library(RColorBrewer)
+```
+
+# 2. Load input files
+
+```{r}
+transcripts <- readDNAStringSet("../raw_data/transcripts.fasta")
+annotations <- read_delim("../raw_data/annotations.txt", delim = "\t", col_names = c("name", "type", "start", "end", "gene"))
+rna_seq_counts <- read_delim("../raw_data/rna_seq_counts.txt", delim = "\t", col_names = c("gene_name", "W0_1", "W0_2", "W0_3", "H24_1", "H24_2", "H24_3"))
+```
+
+# 3. Prepare sequence tables for each gene
+
+```{r}
+gene_sequences <- annotations %>%
+  rowwise() %>%
+  mutate(sequence = as.character(subseq(transcripts[[name]], start = start, end = end))) %>%
+  select(gene_name = gene, sequence)
+
+rna_seq_counts_long <- rna_seq_counts %>%
+  pivot_longer(cols = starts_with("W") | starts_with("H"), names_to = "sample", values_to = "reads")
+
+merged_data <- rna_seq_counts_long %>%
+  inner_join(gene_sequences, by = "gene_name") %>%
+  select(gene_name, sequence, sample, reads)
+```
+
+# 4. Normalize read counts to RPM (Reads Per Million)
+
+```{r}
+normalized_counts <- merged_data %>%
+  group_by(sample) %>%
+  mutate(total_reads = sum(reads)) %>%
+  mutate(reads_per_million = (reads / total_reads) * 1e6) %>% 
+  mutate(sequence = gsub("T", "U", sequence)) %>%
+  ungroup() %>%
+  select(-total_reads)
+```
+
+# 5. Define codon counting function and amino acid mapping
+
+```{r}
+count_codons <- function(sequence, reads_per_million) {
+  codon_counts <- rep(0, 64)
+  names(codon_counts) <- codons <- c("AAA", "AAC", "AAG", "AAU", "ACA", "ACC", "ACG", "ACU", "AGA", "AGC", "AGG", "AGU",
+                                       "AUA", "AUC", "AUG", "AUU", "CAA", "CAC", "CAG", "CAU", "CCA", "CCC", "CCG", "CCU",
+                                       "CGA", "CGC", "CGG", "CGU", "CUA", "CUC", "CUG", "CUU", "GAA", "GAC", "GAG", "GAU",
+                                       "GCA", "GCC", "GCG", "GCU", "GGA", "GGC", "GGG", "GGU", "GUA", "GUC", "GUG", "GUU",
+                                       "UAA", "UAC", "UAG", "UAU", "UCA", "UCC", "UCG", "UCU", "UGA", "UGC", "UGG", "UGU",
+                                       "UUA", "UUC", "UUG", "UUU")
+
+  for (i in seq_along(sequence)) {
+    rna_seq <- RNAString(sequence[i])
+    codons_in_seq <- trinucleotideFrequency(rna_seq, step = 3)
+    codon_counts <- codon_counts + codons_in_seq[codons] * reads_per_million[i]
+  }
+  return(codon_counts)
+}
+
+codon_map <- c(
+  "AAA" = "Lys", "AAC" = "Asn", "AAG" = "Lys", "AAU" = "Asn", "ACA" = "Thr", "ACC" = "Thr", "ACG" = "Thr", "ACU" = "Thr",
+  "AGA" = "Arg", "AGC" = "Ser", "AGG" = "Arg", "AGU" = "Ser", "AUA" = "Ile", "AUC" = "Ile", "AUG" = "Met", "AUU" = "Ile",
+  "CAA" = "Gln", "CAC" = "His", "CAG" = "Gln", "CAU" = "His", "CCA" = "Pro", "CCC" = "Pro", "CCG" = "Pro", "CCU" = "Pro",
+  "CGA" = "Arg", "CGC" = "Arg", "CGG" = "Arg", "CGU" = "Arg", "CUA" = "Leu", "CUC" = "Leu", "CUG" = "Leu", "CUU" = "Leu",
+  "GAA" = "Glu", "GAC" = "Asp", "GAG" = "Glu", "GAU" = "Asp", "GCA" = "Ala", "GCC" = "Ala", "GCG" = "Ala", "GCU" = "Ala",
+  "GGA" = "Gly", "GGC" = "Gly", "GGG" = "Gly", "GGU" = "Gly", "GUA" = "Val", "GUC" = "Val", "GUG" = "Val", "GUU" = "Val",
+  "UAA" = "STOP", "UAC" = "Tyr", "UAG" = "STOP", "UAU" = "Tyr", "UCA" = "Ser", "UCC" = "Ser", "UCG" = "Ser", "UCU" = "Ser",
+  "UGA" = "STOP", "UGC" = "Cys", "UGG" = "Trp", "UGU" = "Cys", "UUA" = "Leu", "UUC" = "Phe", "UUG" = "Leu", "UUU" = "Phe")
+```
+
+# 6. Count codons and compare between conditions
+
+```{r}
+[...previous content...]
+```
+
+# 9. Create summary table for all samples and calculate statistics
+
+```{r}
+my_tibble <- as_tibble(matrix(nrow= 64, ncol = 8))
+colnames(my_tibble) <- c("codon", control_samples, stress_samples, "amino_acid")
+my_tibble$codon <- results_list[[1]]$codon
+my_tibble$amino_acid <- results_list[[1]]$amino_acid
+
+for (i in seq_along(results_list)) {
+  my_tibble[,(i+1)] <- results_list[[i]]$control
+  my_tibble[,(i+4)] <- results_list[[i]]$stress
+}
+
+my_tibble <- my_tibble %>% 
+  rowwise() %>% 
+  mutate(W0_mean = mean(c(W0_1, W0_2, W0_3)),
+         H24_mean = mean(c(H24_1, H24_2, H24_3)),
+         FC = H24_mean/W0_mean,
+         log2FC = log2(FC),
+         W0_sd = sd(c(W0_1, W0_2, W0_3)),
+         H24_sd = sd(c(H24_1, H24_2, H24_3)),
+         FC_sd = sqrt((H24_sd / W0_mean)^2 + (W0_sd * H24_mean / W0_mean^2)^2),
+         log2FC_sd = FC_sd / (log(2) * FC))
+
+my_tibble$t.test <- NA
+for(i in 1:nrow(my_tibble)){
+  my_tibble$t.test[i] <- t.test(x = my_tibble[i,2:4], y = my_tibble[i,5:7])$p.value
+}
+
+significant <- my_tibble %>% filter(t.test < 0.05)
+
+my_tibble <- my_tibble %>%
+  group_by(amino_acid) %>%
+  mutate(codon_preference = W0_mean / sum(W0_mean)) %>%
+  ungroup()
+```
+
+# 10. Plot mean values and significance by amino acid
+
+```{r}
+my_tibble_filtered <- my_tibble %>%
+  filter(!codon %in% c("UAA", "UAG", "UGA"))
+
+Codon_change_by_amino_acid_mean <- ggplot(my_tibble_filtered, aes(x = codon, y = log2FC, fill = codon_preference)) +
+  geom_bar(stat = "identity") +
+  theme_bw() +
+  facet_wrap(~ amino_acid, scales = "free_x") +
+  labs(x = "Codon", y = "Log2FC", title = "log2FC codon change in HL stress condition sorted by amino acid") +
+  geom_errorbar(aes(ymin = log2FC - log2FC_sd, ymax = log2FC + log2FC_sd), width = 0.2, color = "black") +
+  geom_text(aes(label = ifelse(t.test < 0.05, "*", "")), y = 0.15, hjust = -1.5, color = "black", size = 5, fontface = "bold")
+
+print(Codon_change_by_amino_acid_mean)
+
+ggsave("../produced_data/Codon_change_by_amino_mean.png", plot = Codon_change_by_amino_acid_mean, width = 14, height = 8, dpi = 300)
+```
+
+# 11. Pearson correlation and scatterplot of codon preference vs log2FC
+
+```{r}
+custom_palette <- colorRampPalette(brewer.pal(9, "Set1"))(21)
+correlation_test <- cor.test(x = my_tibble$codon_preference, y = my_tibble$log2FC, method = "pearson")
+correlation_value <- cor(my_tibble$codon_preference, my_tibble$log2FC, method = "pearson")
+
+codon_preference_vs_stress_log2FC <- ggplot(my_tibble, aes(x = codon_preference, y = log2FC, color = amino_acid)) +
+  geom_point(size = 3) +
+  geom_smooth(method = "lm", se = FALSE, color = "black") +
+  labs(title = paste("Codon Preference vs. Stress-Control Difference (Correlation =", round(correlation_value, 2), ")"),
+       x = "Codon Preference in Control",
+       y = "Difference (log2FC)") +
+  scale_color_manual(values = custom_palette) +
+  theme_bw()
+
+print(correlation_test)
+print(codon_preference_vs_stress_log2FC)
+
+ggsave("../produced_data/codon_preference_vs_stress_log2FC.png", plot = codon_preference_vs_stress_log2FC, width = 14, height = 8, dpi = 300)
+```
